@@ -27,6 +27,7 @@ GN = "hl=es-419&gl=AR&ceid=AR:es-419"
 CATEGORIAS = {
     "laboral": {
         "nombre": "Mundo laboral y RRHH",
+        "local": True,
         "busquedas": [
             "empleo OR salarios OR \"mercado laboral\"",
             "\"recursos humanos\" OR reclutamiento OR \"búsqueda laboral\"",
@@ -43,8 +44,9 @@ CATEGORIAS = {
     },
     "economia": {
         "nombre": "Economía",
+        "local": True,
         "busquedas": [
-            "economía argentina",
+            "economía",
             "dólar OR inflación OR \"banco central\"",
         ],
     },
@@ -55,10 +57,12 @@ CATEGORIAS = {
     },
     "deportes": {
         "nombre": "Deportes",
-        "busquedas": ["fútbol OR \"selección argentina\"", "deportes"],
+        "local": True,
+        "busquedas": ["fútbol OR selección", "deportes"],
     },
     "espectaculos": {
         "nombre": "Espectáculos",
+        "local": True,
         "busquedas": ["espectáculos OR famosos", "series OR streaming OR música"],
     },
 }
@@ -189,6 +193,8 @@ def google_news(url):
 def noticias_de(cat, filtro):
     notas = []
     for q in cat["busquedas"]:
+        if cat.get("local"):
+            q = f"({q}) argentina"
         url = "https://news.google.com/rss/search?q=" + urllib.parse.quote(f"{q} {filtro}") + "&" + GN
         try:
             notas += google_news(url)
@@ -246,7 +252,9 @@ def parecidos(a, b):
     comun = len(a & b)
     if comun < 2:
         return False
-    return comun / min(len(a), len(b)) >= 0.5 or comun / len(a | b) >= 0.34
+    if comun >= 3 and comun / min(len(a), len(b)) >= 0.5:
+        return True
+    return comun / len(a | b) >= 0.5
 
 
 def agrupar(notas):
@@ -261,11 +269,22 @@ def agrupar(notas):
         limpias.append(n)
     limpias.sort(key=lambda n: n["fecha"] or "", reverse=True)
 
+    # Las palabras que aparecen en muchisimos titulares (ej. la propia busqueda)
+    # no sirven para decidir si dos notas hablan de lo mismo.
+    frec = {}
+    for n in limpias:
+        for w in n["_p"]:
+            frec[w] = frec.get(w, 0) + 1
+    tope = max(8, len(limpias) * 0.10)
+    comunes = {w for w, c in frec.items() if c > tope}
+    for n in limpias:
+        n["_p"] = n["_p"] - comunes
+
     grupos = []
     for n in limpias:
         mejor = None
         for g in grupos:
-            if parecidos(n["_p"], g["_base"]) or any(parecidos(n["_p"], m["_p"]) for m in g["notas"][:4]):
+            if parecidos(n["_p"], g["_base"]) or any(parecidos(n["_p"], m["_p"]) for m in g["notas"][:2]):
                 mejor = g
                 break
         if mejor is None:
