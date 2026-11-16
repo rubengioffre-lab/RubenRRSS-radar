@@ -50,7 +50,8 @@ CATEGORIAS = {
         "local": True,
         "busquedas": [
             "educación OR universidades OR escuelas",
-            "docentes OR estudiantes OR carreras OR capacitación",
+            "docentes OR alumnos OR universitarios OR becas",
+            "\"carreras universitarias\" OR capacitación OR cursos OR \"formación profesional\"",
         ],
     },
     "economia": {
