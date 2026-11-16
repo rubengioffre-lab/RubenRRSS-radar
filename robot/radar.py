@@ -16,7 +16,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta, timezone
+from datetime import date, datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
 
@@ -506,6 +506,79 @@ def palabras_calientes(notas, top=12):
     return [{"palabra": w, "medios": len(m)} for w, m in orden[:top] if len(m) >= 3]
 
 
+# ------------------------------------------------------------------- calendario
+# Fechas previsibles para planificar contenido. Cada una: (regla, nombre, tipo, idea).
+# Reglas: ("fijo", mes, dia) | ("n", n, dia_semana, mes) con lunes=0 y n=-1 para "el ultimo" | ("dia_del_anio", 256)
+FECHAS = [
+    (("n", 3, 0, 1), "Blue Monday", "social", "El supuesto día más triste del año: sirve para hablar de motivación y de cuándo conviene cambiar de trabajo."),
+    (("fijo", 1, 28), "Día de la Protección de Datos", "tech", "Qué datos tuyos ve un reclutador y cómo cuidar tu información cuando buscás trabajo."),
+    (("n", 2, 1, 2), "Día de Internet Segura", "tech", "Estafas con falsas ofertas laborales: cómo reconocerlas."),
+    (("fijo", 2, 11), "Día de la Mujer y la Niña en la Ciencia", "tech", "Datos de mujeres en tecnología y qué se ve en las búsquedas IT."),
+    (("fijo", 3, 8), "Día Internacional de la Mujer", "social", "Brecha de género en IT contada con datos, sin saludo genérico."),
+    (("fijo", 3, 31), "Día Mundial del Backup", "tech", "Guiño para el público técnico: perfiles de infraestructura y por qué son tan buscados."),
+    (("n", 4, 3, 4), "Día de las Niñas en las TIC", "tech", "Cómo se llega a una carrera en tecnología y qué caminos existen sin título."),
+    (("fijo", 4, 28), "Día de la Seguridad y Salud en el Trabajo", "laboral", "Burnout y salud mental en equipos de tecnología."),
+    (("fijo", 5, 1), "Día del Trabajador", "laboral", "Cómo cambió el trabajo en tecnología en el último año."),
+    (("fijo", 5, 17), "Día de Internet", "tech", "Trabajos que no existían hace 10 años y hoy se buscan."),
+    (("fijo", 5, 20), "Día Internacional de Recursos Humanos", "laboral", "Qué hace realmente un sourcer: el detrás de escena de una búsqueda."),
+    (("fijo", 6, 6), "Día de la Ingeniería Argentina", "tech", "Ingenieros en el mercado IT: qué perfiles piden las empresas del exterior."),
+    (("n", 3, 6, 6), "Día del Padre", "social", "Fecha comercial fuerte. Para tu marca solo si hay un ángulo laboral (licencias, trabajo remoto y familia)."),
+    (("fijo", 6, 28), "Día del Orgullo", "social", "Diversidad en procesos de selección: qué hacen bien las empresas que contratan en serio."),
+    (("fijo", 6, 30), "Vence el aguinaldo (1.ª cuota)", "laboral", "Cómo se calcula el aguinaldo y qué pasa con quienes facturan como contractor."),
+    (("fijo", 7, 20), "Día del Amigo", "social", "Referidos: por qué recomendar a un amigo es la vía más rápida para entrar a una empresa."),
+    (("n", -1, 4, 7), "Día del SysAdmin", "tech", "Saludo al público técnico y datos de demanda de perfiles de infraestructura."),
+    (("fijo", 9, 9), "Día del Tester", "tech", "QA: qué se pide hoy y cuánto pesa la automatización."),
+    (("dia_del_anio", 256), "Día del Programador", "tech", "La fecha tech más fuerte del año para tu marca: datos de sueldos, perfiles más buscados, mitos."),
+    (("fijo", 9, 21), "Día del Estudiante", "social", "Primer trabajo en IT: qué mira un reclutador cuando no hay experiencia."),
+    (("fijo", 10, 10), "Día Mundial de la Salud Mental", "laboral", "Burnout en tecnología y señales de que un trabajo te está haciendo mal."),
+    (("fijo", 10, 16), "Día del Jefe", "laboral", "Qué preguntarle a tu futuro jefe en una entrevista."),
+    (("n", 3, 6, 10), "Día de la Madre", "social", "Fecha comercial fuerte. Para tu marca solo con ángulo laboral (maternidad y carrera en IT)."),
+    (("n", 4, 4, 11), "Black Friday", "comercial", "Pico de demanda en e-commerce: qué perfiles tech contratan esas empresas antes de la fecha."),
+    (("fijo", 11, 30), "Día de la Seguridad Informática", "tech", "Ciberseguridad: el perfil que más cuesta encontrar y por qué."),
+    (("fijo", 12, 18), "Vence el aguinaldo (2.ª cuota)", "laboral", "Aguinaldo y cierre de año: también es época de renuncias y cambios de trabajo."),
+    (("fijo", 12, 31), "Cierre de año", "laboral", "Balance del año del mercado IT y qué se viene. Conviene tenerlo listo una semana antes."),
+]
+
+
+def fecha_de(regla, anio):
+    if regla[0] == "fijo":
+        return date(anio, regla[1], regla[2])
+    if regla[0] == "dia_del_anio":
+        return date(anio, 1, 1) + timedelta(days=regla[1] - 1)
+    _, n, dow, mes = regla
+    if n > 0:
+        d = date(anio, mes, 1)
+        d += timedelta(days=(dow - d.weekday()) % 7)
+        return d + timedelta(weeks=n - 1)
+    d = date(anio + (mes == 12), mes % 12 + 1, 1) - timedelta(days=1)   # ultimo dia del mes
+    return d - timedelta(days=(d.weekday() - dow) % 7)
+
+
+def calendario(ahora, dias=150):
+    """Proximas fechas: feriados de Argentina (se actualizan solos) + fechas de contenido."""
+    hoy = (ahora - timedelta(hours=3)).date()   # hora de Argentina
+    hasta = hoy + timedelta(days=dias)
+    por_dia = {}
+    for anio in sorted({hoy.year, hasta.year}):
+        try:
+            for f in json.loads(bajar(f"https://api.argentinadatos.com/v1/feriados/{anio}", intentos=1)):
+                d = date.fromisoformat(f["fecha"])
+                if hoy <= d <= hasta:
+                    por_dia.setdefault(d, []).append({"nombre": f["nombre"], "tipo": "feriado",
+                                                      "detalle": "Feriado " + f.get("tipo", ""), "idea": ""})
+        except Exception as e:  # noqa: BLE001
+            log("  aviso feriados:", e)
+        for regla, nombre, tipo, idea in FECHAS:
+            d = fecha_de(regla, anio)
+            if hoy <= d <= hasta:
+                por_dia.setdefault(d, []).append({"nombre": nombre, "tipo": tipo, "detalle": "", "idea": idea})
+    out = []
+    for d in sorted(por_dia):
+        for x in por_dia[d]:
+            out.append({"fecha": d.isoformat(), "faltan": (d - hoy).days, **x})
+    return out
+
+
 # --------------------------------------------------------------------------- IA
 def cargar_ia():
     try:
@@ -754,6 +827,12 @@ def correr():
         except Exception as e:  # noqa: BLE001
             log("  ERROR", rotulo, e)
             salida["errores"].append(f"{rotulo} ({titulo}): {re.sub(r'key=[^& ]+', 'key=***', str(e))[:160]}")
+
+    try:
+        salida["calendario"] = calendario(ahora)
+    except Exception as e:  # noqa: BLE001
+        salida["calendario"] = []
+        salida["errores"].append(f"Calendario: {str(e)[:160]}")
 
     for t in salida["tendencias_ar"]:   # una busqueda que entro hace poco esta despegando
         try:
