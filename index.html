@@ -76,6 +76,10 @@ a:hover{text-decoration:underline}
 .dia h3{margin:0;font-size:16.5px;font-weight:600}
 .dia p{margin:6px 0 0;color:var(--mut);font-size:13.5px;border-left:2px solid var(--acc);padding-left:10px}
 .mes{font:400 26px/1 "Special Gothic Condensed One","Arial Narrow",sans-serif;text-transform:uppercase;margin:26px 0 8px}
+.filtros{display:flex;gap:6px 18px;flex-wrap:wrap;align-items:center;margin:0 0 16px;padding:10px 0;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.filtros .g{display:flex;gap:5px;align-items:center;flex-wrap:wrap}
+.filtros .rot{margin:0 4px 0 0}
+.filtros button{font-size:12px;padding:3px 10px}
 .viene{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:0 0 16px}
 .viene .rot{margin:0 4px 0 0}
 .vacio{color:var(--mut);padding:30px 0;text-align:center}
@@ -105,6 +109,28 @@ a:hover{text-decoration:underline}
 const PERIODOS = {ahora:"Ahora (4 h)", "24h":"Últimas 24 h", semana:"Última semana", mes:"Último mes"};
 let D = null, tab = "paravos", per = "24h", marca = "personal";
 const ESTADOS = {despegando: "Despegando", pico: "En el pico", bajando: "Bajando"};
+// Filtros: fEst = etiquetas elegidas (vacio = todas), fMin = puntaje minimo, fOrd = orden
+let F = {est: [], min: {paravos: 6, cat: 0}, ord: {paravos: "tendencia", cat: "medios"}};
+try{ const g = JSON.parse(leer0("radar_filtros") || "null"); if(g && g.min && g.ord && Array.isArray(g.est)) F = g; }catch(e){}
+function leer0(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+const RANGO = {despegando: 0, pico: 1, null: 2, undefined: 2, bajando: 3};
+function barraFiltros(v){
+  const b = (attr, val, txt, on) => "<button " + attr + '="' + val + '" class="' + (on ? "on" : "") + '">' + txt + "</button>";
+  return '<div class="filtros"><div class="g"><span class="rot">Etiqueta</span>' + b("data-fe", "", "Todas", !F.est.length) +
+    [["despegando", "Despegando"], ["pico", "En el pico"], ["bajando", "Bajando"], ["sin", "Sin etiqueta"]].map(x => b("data-fe", x[0], x[1], F.est.includes(x[0]))).join("") +
+    '</div><div class="g"><span class="rot">Puntaje</span>' + [[0, "Todos"], [6, "6+"], [8, "8+"], [9, "9+"]].map(x => b("data-fm", x[0], x[1], F.min[v] === x[0])).join("") +
+    '</div><div class="g"><span class="rot">Ordenar por</span>' + [["tendencia", "Tendencia"], ["puntaje", "Puntaje"], ["medios", "Medios"]].map(x => b("data-fo", x[0], x[1], F.ord[v] === x[0])).join("") + "</div></div>";
+}
+function aplicarFiltros(lista, v){   // lista de {t, cat}
+  const pt = x => x.t.ia ? x.t.ia.puntaje : -1;
+  let l = lista.filter(x => (!F.est.length || F.est.includes(x.t.estado || "sin")) && (F.min[v] === 0 || pt(x) >= F.min[v]));
+  const o = F.ord[v];
+  l.sort((a, b) => o === "puntaje" ? (pt(b) - pt(a)) || (b.t.medios - a.t.medios)
+    : o === "medios" ? (b.t.medios - a.t.medios) || (pt(b) - pt(a))
+    : (RANGO[a.t.estado] - RANGO[b.t.estado]) || (pt(b) - pt(a)) || (b.t.medios - a.t.medios));
+  return l;
+}
+const sinResultados = '<div class="vacio">Ningún tema cumple con esos filtros. Probá con "Todas" o con un puntaje más bajo.</div>';
 const MARCAS = {personal: ["Brief: Personal", "mis redes personales (marca personal como sourcer IT / RRHH)"], growup: ["Brief: Grow UP HR", "las redes de Grow UP HR"]};
 
 function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
@@ -122,7 +148,7 @@ function hace(iso){
   if(h < 48) return "hace " + h + " h";
   return "hace " + Math.round(h / 24) + " días";
 }
-function toast(t){ const e = document.getElementById("toast"); e.textContent = t; e.classList.add("ver"); setTimeout(() => e.classList.remove("ver"), 1800); }
+function toast(t){ const e = document.getElementById("toast"); e.textContent = t; e.classList.add("ver"); setTimeout(() => e.classList.remove("ver"), 2600); }
 async function copiar(t){
   try{ await navigator.clipboard.writeText(t); }
   catch(e){ const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand("copy"); a.remove(); }
@@ -216,7 +242,8 @@ function vistaCategoria(){
   let s = "";
   if(b.calientes && b.calientes.length) s += '<div class="cal">' + b.calientes.map(c => '<span class="chip">' + esc(c.palabra) + " · " + c.medios + "</span>").join("") + "</div>";
   if(!b.temas.length) return s + '<div class="vacio">No hay notas para este tema en este período.</div>';
-  return s + b.temas.map((t, i) => tarjeta(t, i, t.medios + " medios hablando del tema (" + D.categorias[tab].nombre + ", " + PERIODOS[per].toLowerCase() + ")")).join("");
+  const l = aplicarFiltros(b.temas.map(t => ({t})), "cat");
+  return s + barraFiltros("cat") + (l.length ? l.map((x, i) => tarjeta(x.t, i, x.t.medios + " medios hablando del tema (" + D.categorias[tab].nombre + ", " + PERIODOS[per].toLowerCase() + ")")).join("") : sinResultados);
 }
 
 function vistaParaVos(){
@@ -224,18 +251,17 @@ function vistaParaVos(){
   if(!ia.activa) return '<div class="aviso"><i>Falta activar la inteligencia artificial.</i>Cuando esté la clave de Gemini cargada en GitHub, acá vas a ver solo los temas que te sirven, con resumen e ideas de contenido. Mientras tanto, las etiquetas de velocidad ya funcionan en cada tema.</div>' + vistaDespegando();
   const vistos = {}, lista = [];
   Object.values(D.categorias).forEach(c => ["ahora", "24h"].forEach(p => (c.periodos[p].temas || []).forEach(t => {
-    if(!t.ia || t.ia.puntaje < 6) return;
+    if(!t.ia) return;
     const prev = vistos[t.ia.tid];
     if(prev){ if(t.medios > prev.t.medios) prev.t = t; return; }
     lista.push(vistos[t.ia.tid] = {t, cat: c.nombre});
   })));
-  const orden = {despegando: 0, pico: 1, undefined: 2, null: 2, bajando: 3};
-  lista.sort((a, b) => (orden[a.t.estado] - orden[b.t.estado]) || (b.t.ia.puntaje - a.t.ia.puntaje) || (b.t.medios - a.t.medios));
-  let s = '<div class="aviso"><i>Lo que hoy te sirve para hacer contenido.</i>Temas de las últimas 24 h con puntaje 6 o más para tu marca. Primero lo que está despegando.' + (ia.error ? " (La IA falló en la última corrida: " + esc(ia.error) + ")" : "") + "</div>";
+  let s = '<div class="aviso"><i>Lo que hoy te sirve para hacer contenido.</i>Todos los temas de las últimas 24 h que la IA ya puntuó para tu marca. Usá los filtros para cruzar tendencia y puntaje.' + (ia.error ? " (La IA falló en la última corrida: " + esc(ia.error) + ")" : "") + "</div>";
   const tr = (D.tendencias_ar || []).filter(t => t.ia && t.ia.puntaje >= 6);
   if(tr.length) s += '<div class="cal">' + tr.map(t => '<span class="chip">Google: ' + esc(t.tema) + " · " + t.ia.puntaje + "/10</span>").join("") + "</div>";
-  if(!lista.length) return s + '<div class="vacio">' + (ia.ultima ? "Ahora no hay temas con puntaje alto. Mirá las pestañas por tema." : "La IA todavía no hizo su primera pasada. Aparece en la próxima corrida del robot.") + "</div>";
-  return s + lista.slice(0, 30).map((x, i) => tarjeta(x.t, i, x.t.medios + " medios hablando del tema (" + x.cat + ")", x.cat)).join("");
+  if(!lista.length) return s + '<div class="vacio">' + (ia.ultima ? "Todavía no hay temas puntuados. Mirá las pestañas por tema." : "La IA todavía no hizo su primera pasada. Aparece en la próxima corrida del robot.") + "</div>";
+  const l = aplicarFiltros(lista, "paravos");
+  return s + barraFiltros("paravos") + '<div class="meta" style="margin:-6px 0 12px">' + l.length + " de " + lista.length + " temas</div>" + (l.length ? l.slice(0, 40).map((x, i) => tarjeta(x.t, i, x.t.medios + " medios hablando del tema (" + x.cat + ")", x.cat)).join("") : sinResultados);
 }
 function vistaDespegando(){
   const l = [];
@@ -254,9 +280,16 @@ function pintar(){
 document.addEventListener("click", e => {
   const b = e.target.closest("button"); if(!b) return;
   if(b.dataset.t){ tab = b.dataset.t; guardar("radar_tab", tab); pintar(); window.scrollTo(0, 0); }
+  else if(b.dataset.fe !== undefined || b.dataset.fm !== undefined || b.dataset.fo !== undefined){
+    const v = tab === "paravos" ? "paravos" : "cat";
+    if(b.dataset.fe !== undefined){ const e = b.dataset.fe; if(!e) F.est = []; else F.est = F.est.includes(e) ? F.est.filter(x => x !== e) : F.est.concat(e); }
+    if(b.dataset.fm !== undefined) F.min[v] = +b.dataset.fm;
+    if(b.dataset.fo !== undefined) F.ord[v] = b.dataset.fo;
+    guardar("radar_filtros", JSON.stringify(F)); pintar();
+  }
   else if(b.dataset.p){ per = b.dataset.p; guardar("radar_per", per); pintar(); }
   else if(b.dataset.b !== undefined){ copiar(brief(...briefs[+b.dataset.b])); }
-  else if(b.id === "btnMarca"){ marca = marca === "personal" ? "growup" : "personal"; guardar("radar_marca", marca); b.textContent = MARCAS[marca][0]; toast(MARCAS[marca][0]); }
+  else if(b.id === "btnMarca"){ marca = marca === "personal" ? "growup" : "personal"; guardar("radar_marca", marca); b.textContent = MARCAS[marca][0]; toast(marca === "personal" ? "Los briefs que copies van a pedir contenido para tus redes personales" : "Los briefs que copies van a pedir contenido para Grow UP HR"); }
   else if(b.id === "btnTema"){ const t = document.documentElement.dataset.tema === "suplente" ? "titular" : "suplente"; document.documentElement.dataset.tema = t; guardar("radar_tema", t); }
 });
 

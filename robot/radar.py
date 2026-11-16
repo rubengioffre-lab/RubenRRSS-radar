@@ -45,6 +45,14 @@ CATEGORIAS = {
             "ciberseguridad OR hackeo OR programadores OR software",
         ],
     },
+    "educacion": {
+        "nombre": "Educación",
+        "local": True,
+        "busquedas": [
+            "educación OR universidades OR escuelas",
+            "docentes OR estudiantes OR carreras OR capacitación",
+        ],
+    },
     "economia": {
         "nombre": "Economía",
         "local": True,
