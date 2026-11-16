@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Grow UP Radar</title>
+<title>Radar RRSS · Ruben</title>
 <style>
 :root{--bg:#f5f6f8;--card:#fff;--tx:#14171f;--mut:#667085;--line:#e4e7ec;--acc:#0b6bcb;--acc2:#e8f1fb;--hot:#d92d20;--ok:#067647}
 [data-tema=oscuro]{--bg:#0f1218;--card:#181c25;--tx:#eef0f4;--mut:#98a2b3;--line:#2a303c;--acc:#6ab0ff;--acc2:#1c2a3d;--hot:#ff7a6e;--ok:#5fd39a}
@@ -55,8 +55,9 @@ a:hover{text-decoration:underline}
 <body>
 <header>
   <div class="fila">
-    <h1>Grow UP <span>Radar</span></h1>
+    <h1>Radar <span>RRSS</span></h1>
     <span class="act" id="act">Cargando…</span>
+    <button id="btnMarca" title="Para quién se arma el brief que se copia"></button>
     <button id="btnTema" title="Cambiar tema claro/oscuro">◐</button>
   </div>
   <div class="fila tabs" id="tabs"></div>
@@ -66,7 +67,8 @@ a:hover{text-decoration:underline}
 <div id="toast"></div>
 <script>
 const PERIODOS = {ahora:"Ahora (4 h)", "24h":"Últimas 24 h", semana:"Última semana", mes:"Último mes"};
-let D = null, tab = "ahora_ar", per = "24h";
+let D = null, tab = "ahora_ar", per = "24h", marca = "personal";
+const MARCAS = {personal: ["Brief: Personal", "mis redes personales (marca personal como sourcer IT / RRHH)"], growup: ["Brief: Grow UP HR", "las redes de Grow UP HR"]};
 
 function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
 function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
@@ -90,7 +92,7 @@ async function copiar(t){
   toast("Copiado. Pegalo en Claude");
 }
 function brief(tema, contexto, notas){
-  let t = "Quiero armar contenido para redes de Grow UP HR sobre este tema que está en tendencia:\n\n";
+  let t = "Quiero armar contenido para " + MARCAS[marca][1] + " sobre este tema que está en tendencia:\n\n";
   t += "TEMA: " + tema + "\n";
   if(contexto) t += "CONTEXTO: " + contexto + "\n";
   if(notas && notas.length){ t += "\nNOTAS DE REFERENCIA:\n"; notas.forEach(n => t += "- " + n.titulo + " (" + (n.medio || "") + ") " + (n.link || "") + "\n"); }
@@ -98,7 +100,7 @@ function brief(tema, contexto, notas){
   return t;
 }
 const briefs = [];
-function btnBrief(tema, contexto, notas){ briefs.push(brief(tema, contexto, notas)); return '<button data-b="' + (briefs.length - 1) + '">Copiar brief para Claude</button>'; }
+function btnBrief(tema, contexto, notas){ briefs.push([tema, contexto, notas]); return '<button data-b="' + (briefs.length - 1) + '">Copiar brief para Claude</button>'; }
 
 function pintarTabs(){
   const tabs = [["ahora_ar", "🔥 En tendencia ahora"]].concat(Object.entries(D.categorias).map(([k, v]) => [k, v.nombre]));
@@ -146,7 +148,8 @@ document.addEventListener("click", e => {
   const b = e.target.closest("button"); if(!b) return;
   if(b.dataset.t){ tab = b.dataset.t; guardar("radar_tab", tab); pintar(); window.scrollTo(0, 0); }
   else if(b.dataset.p){ per = b.dataset.p; guardar("radar_per", per); pintar(); }
-  else if(b.dataset.b !== undefined){ copiar(briefs[+b.dataset.b]); }
+  else if(b.dataset.b !== undefined){ copiar(brief(...briefs[+b.dataset.b])); }
+  else if(b.id === "btnMarca"){ marca = marca === "personal" ? "growup" : "personal"; guardar("radar_marca", marca); b.textContent = MARCAS[marca][0]; toast(MARCAS[marca][0]); }
   else if(b.id === "btnTema"){ const t = document.documentElement.dataset.tema === "oscuro" ? "claro" : "oscuro"; document.documentElement.dataset.tema = t; guardar("radar_tema", t); }
 });
 
@@ -164,6 +167,7 @@ async function cargar(){
 }
 document.documentElement.dataset.tema = leer("radar_tema") || (matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro");
 tab = leer("radar_tab") || tab; per = PERIODOS[leer("radar_per")] ? leer("radar_per") : per;
+marca = MARCAS[leer("radar_marca")] ? leer("radar_marca") : marca; document.getElementById("btnMarca").textContent = MARCAS[marca][0];
 cargar(); setInterval(cargar, 10 * 60 * 1000);
 </script>
 </body>

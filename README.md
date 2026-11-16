@@ -1,4 +1,4 @@
-# Ruben RRSS Radar
+# Radar RRSS
 
 Radar de tendencias para armar contenido en redes a tiempo.
 
