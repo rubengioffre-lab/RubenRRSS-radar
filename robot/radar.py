@@ -321,7 +321,9 @@ def palabras_calientes(notas, top=12):
     for n in notas:
         for w in palabras(n["titulo"]):
             cuenta.setdefault(w, set()).add(n["medio"])
-    orden = sorted(cuenta.items(), key=lambda kv: -len(kv[1]))
+    # Se descartan las palabras demasiado generales (ej. las de la propia busqueda).
+    tope = max(10, len({n["medio"] for n in notas}) * 0.15)
+    orden = sorted(((w, m) for w, m in cuenta.items() if len(m) <= tope), key=lambda kv: -len(kv[1]))
     return [{"palabra": w, "medios": len(m)} for w, m in orden[:top] if len(m) >= 3]
 
 
