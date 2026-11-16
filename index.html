@@ -182,7 +182,7 @@ function vistaCalendario(){
   c.forEach(x => {
     const d = new Date(x.fecha + "T12:00:00"), m = MESES[d.getMonth()] + " " + d.getFullYear();
     if(m !== mes){ mes = m; s += '<div class="mes">' + m + "</div>"; }
-    s += '<div class="dia"><div class="f">' + d.getDate() + " " + MESES[d.getMonth()].slice(0, 3) + "<small>" + DIAS[d.getDay()] + " · " + faltan(x.faltan) + '</small></div><div><div class="rot" style="margin:0 0 4px">' + esc(TIPOS[x.tipo] || x.tipo) + (x.detalle ? " · " + esc(x.detalle) : "") + "</div><h3>" + esc(x.nombre) + "</h3>" +
+    s += '<div class="dia"><div class="f">' + d.getDate() + " " + MESES[d.getMonth()].slice(0, 3) + "<small>" + DIAS[d.getDay()] + " · " + faltan(x.faltan) + '</small></div><div><div class="rot" style="margin:0 0 4px">' + esc(x.tipo === "feriado" && x.detalle ? x.detalle : (TIPOS[x.tipo] || x.tipo)) + "</div><h3>" + esc(x.nombre) + "</h3>" +
       (x.idea ? "<p>" + esc(x.idea) + '</p><div class="acc">' + btnBrief(x.nombre + " (" + d.getDate() + " de " + MESES[d.getMonth()] + ")", "Fecha del calendario, " + faltan(x.faltan).toLowerCase() + ". Idea de partida: " + x.idea, []) + "</div>" : "") + "</div></div>";
   });
   return s;
