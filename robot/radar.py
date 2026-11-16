@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sys
+import threading
 import time
 import unicodedata
 import urllib.error
@@ -112,6 +113,35 @@ dijo dice asi mira video fotos tras ser hacer puede pueden vez""".split())
 
 
 # ------------------------------------------------------------------- utilidades
+INICIO = time.monotonic()
+LIMITE_FUENTES = 7 * 60    # pasado este tiempo se dejan de pedir noticias y se sigue con lo que hay
+LIMITE_IA = 10 * 60        # pasado este tiempo no se consulta a la IA
+
+
+def transcurrido():
+    return time.monotonic() - INICIO
+
+
+def con_tope(fn, segundos):
+    """Corre fn() y la abandona si tarda mas de la cuenta (para que nada cuelgue la corrida)."""
+    caja = {}
+
+    def tarea():
+        try:
+            caja["ok"] = fn()
+        except BaseException as e:  # noqa: BLE001
+            caja["error"] = e
+
+    h = threading.Thread(target=tarea, daemon=True)
+    h.start()
+    h.join(segundos)
+    if h.is_alive():
+        raise TimeoutError(f"tardo mas de {segundos} s")
+    if "error" in caja:
+        raise caja["error"]
+    return caja["ok"]
+
+
 def log(*a):
     print(*a, file=sys.stderr, flush=True)
 
@@ -121,8 +151,10 @@ def bajar(url, intentos=2, espera=2):
     for i in range(intentos):
         try:
             req = urllib.request.Request(url, headers={"User-Agent": UA, "Accept": "*/*"})
-            with urllib.request.urlopen(req, timeout=25) as r:
-                return r.read()
+            def pedir(req=req):
+                with urllib.request.urlopen(req, timeout=20) as r:
+                    return r.read()
+            return con_tope(pedir, 30)
         except Exception as e:  # noqa: BLE001
             ultimo = e
             time.sleep(espera * (i + 1))
@@ -220,6 +252,8 @@ def google_news(url):
 def noticias_de(cat, filtro):
     notas = []
     for q in cat["busquedas"]:
+        if transcurrido() > LIMITE_FUENTES:
+            raise TimeoutError("se corto la lectura de noticias por tiempo")
         if cat.get("local"):
             q = f"({q}) argentina"
         url = "https://news.google.com/rss/search?q=" + urllib.parse.quote(f"{q} {filtro}") + "&" + GN
@@ -621,8 +655,10 @@ def gemini(prompt):
         req = urllib.request.Request(url, data=cuerpo, method="POST", headers={
             "Content-Type": "application/json", "x-goog-api-key": GEMINI_KEY})
         try:
-            with urllib.request.urlopen(req, timeout=120) as r:
-                d = json.loads(r.read())
+            def pedir(req=req):
+                with urllib.request.urlopen(req, timeout=60) as r:
+                    return json.loads(r.read())
+            d = con_tope(pedir, 75)
             txt = "".join(p.get("text", "") for p in d["candidates"][0]["content"]["parts"])
             txt = re.sub(r"^```(?:json)?|```$", "", txt.strip()).strip()
             return json.loads(txt), modelo
@@ -705,7 +741,7 @@ def paso_ia(salida, ahora):
             pass
     usadas = ia["llamadas"].get(hoy, 0)
     conviene = pendientes and (len(pendientes) >= 8 or horas >= 1.9)
-    if GEMINI_KEY and conviene and usadas < IA_MAX_POR_DIA:
+    if GEMINI_KEY and conviene and usadas < IA_MAX_POR_DIA and transcurrido() < LIMITE_IA:
         pendientes.sort(key=lambda p: -p["medios"])
         pendientes = pendientes[:45]
         log(f"IA: analizando {len(pendientes)} temas nuevos (consulta {usadas + 1} de {IA_MAX_POR_DIA} hoy)")
@@ -855,7 +891,12 @@ def correr():
         log("Tema:", cat["nombre"])
         bloque = {"nombre": cat["nombre"], "periodos": {}}
         for pid, (filtro, _h) in PERIODOS.items():
-            notas = noticias_de(cat, filtro)
+            try:
+                notas = noticias_de(cat, filtro)
+            except TimeoutError as e:
+                notas = []
+                if not any("por tiempo" in x for x in salida["errores"]):
+                    salida["errores"].append(f"Noticias: {e}")
             if cat.get("portada") and pid in ("ahora", "24h"):
                 try:
                     notas += google_news("https://news.google.com/rss?" + GN)
