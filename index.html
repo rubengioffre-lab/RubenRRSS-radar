@@ -156,6 +156,10 @@ function vistaAhora(){
     '<div class="it"><div class="k"><a href="' + url(t.link) + '" target="_blank" rel="noopener">' + esc(t.tema) + '</a><div class="meta">r/' + esc(t.sub) + '</div></div><span class="v">' + (t.puntos ? num(t.puntos) + " votos" : "") + "</span></div>").join("") : '<div class="vacio">Sin datos (Reddit suele bloquear a los robots)</div>') + "</div>";
   s += '<div class="caja"><div class="rot">Bluesky</div><h2>Conversación global</h2><p>Temas en tendencia en la red abierta tipo X (mayormente en inglés)</p>' + (bs.length ? bs.slice(0, 20).map(t =>
     '<div class="it"><div class="k"><a href="' + url(t.link) + '" target="_blank" rel="noopener">' + esc(t.tema) + '</a></div><span class="v">' + (t.posteos ? num(t.posteos) + " posteos" : "") + "</span></div>").join("") : '<div class="vacio">Sin datos</div>') + "</div>";
+  (D.extras || []).forEach(x => {
+    s += '<div class="caja"><div class="rot">' + esc(x.rotulo) + "</div><h2>" + esc(x.titulo) + "</h2><p>" + esc(x.desc) + "</p>" + x.items.map(t =>
+      '<div class="it"><div class="k"><a href="' + url(t.link) + '" target="_blank" rel="noopener">' + esc(t.tema) + "</a>" + (t.sub ? '<div class="meta">' + esc(t.sub) + "</div>" : "") + '</div><span class="v">' + esc(t.valor || "") + "</span></div>").join("") + "</div>";
+  });
   return s + "</div>";
 }
 

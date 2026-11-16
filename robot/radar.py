@@ -85,6 +85,7 @@ GEMINI_MODELOS = [m.strip() for m in os.environ.get(
 IA_MAX_POR_DIA = int(os.environ.get("RADAR_IA_MAX", "15"))   # tope de consultas por dia
 IA_TEMAS_POR_CAT = 14                                        # cuantos temas de cada categoria se analizan
 SUBREDDITS = ["argentina", "devsarg", "merval"]
+YOUTUBE_KEY = os.environ.get("YOUTUBE_API_KEY", "").strip()   # opcional
 
 MARCA = """Ruben Gioffre es sourcer IT (recluta perfiles de tecnologia) en Argentina. En sus redes personales
 (X, LinkedIn y reels) habla en primera persona de: tecnologia, inteligencia artificial, mercado laboral IT,
@@ -156,9 +157,9 @@ def palabras(titulo):
 
 
 # ---------------------------------------------------------------------- fuentes
-def google_trends():
-    """Busquedas en tendencia en Argentina, ahora."""
-    raiz = ET.fromstring(bajar("https://trends.google.com/trending/rss?geo=AR"))
+def google_trends(geo="AR"):
+    """Busquedas en tendencia en un pais, ahora."""
+    raiz = ET.fromstring(bajar("https://trends.google.com/trending/rss?geo=" + geo))
     out = []
     for it in raiz.iter():
         if local(it.tag) != "item":
@@ -312,6 +313,83 @@ def bluesky():
     return [{"tema": t.get("displayName") or t.get("topic", ""), "posteos": 0,
              "link": "https://bsky.app" + t.get("link", "") if t.get("link", "").startswith("/") else t.get("link", "")}
             for t in tt]
+
+
+# Fuentes extra: cada una devuelve una lista de {"tema", "link", "valor"} y se muestra sola en el panel.
+def x_trends_eeuu():
+    return [{"tema": t["tema"], "link": "https://www.google.com/search?q=" + urllib.parse.quote(t["tema"]),
+             "valor": t["busquedas"]} for t in google_trends("US")[:20]]
+
+
+def x_youtube():
+    if not YOUTUBE_KEY:
+        return None   # sin clave no se muestra
+    d = json.loads(bajar("https://www.googleapis.com/youtube/v3/videos?part=snippet,statistics&chart=mostPopular"
+                         "&regionCode=AR&maxResults=25&key=" + urllib.parse.quote(YOUTUBE_KEY), intentos=1))
+    out = []
+    for v in d.get("items", []):
+        vistas = int(v.get("statistics", {}).get("viewCount") or 0)
+        out.append({"tema": v["snippet"]["title"], "link": "https://www.youtube.com/watch?v=" + v["id"],
+                    "valor": f"{vistas:,}".replace(",", ".") + " vistas", "sub": v["snippet"].get("channelTitle", "")})
+    return out
+
+
+def x_mastodon_links():
+    d = json.loads(bajar("https://mastodon.social/api/v1/trends/links?limit=20", intentos=1))
+    return [{"tema": x.get("title", ""), "link": x.get("url", ""), "sub": x.get("provider_name", ""),
+             "valor": (str(sum(int(h.get("accounts", 0)) for h in x.get("history", [])[:2])) + " cuentas")}
+            for x in d if x.get("title")]
+
+
+def x_mastodon_tags():
+    d = json.loads(bajar("https://mastodon.social/api/v1/trends/tags?limit=20", intentos=1))
+    return [{"tema": "#" + x.get("name", ""), "link": x.get("url", ""),
+             "valor": (str(sum(int(h.get("uses", 0)) for h in x.get("history", [])[:2])) + " posteos")}
+            for x in d if x.get("name")]
+
+
+def x_devto():
+    d = json.loads(bajar("https://dev.to/api/articles?top=1&per_page=20", intentos=1))
+    return [{"tema": x.get("title", ""), "link": x.get("url", ""),
+             "valor": str(x.get("positive_reactions_count") or 0) + " reacciones"} for x in d if x.get("title")]
+
+
+def x_lobsters():
+    d = json.loads(bajar("https://lobste.rs/hottest.json", intentos=1))
+    return [{"tema": x.get("title", ""), "link": x.get("url") or x.get("short_id_url", ""),
+             "valor": str(x.get("score") or 0) + " pts"} for x in d[:20] if x.get("title")]
+
+
+def x_producthunt():
+    raiz = ET.fromstring(bajar("https://www.producthunt.com/feed", intentos=1))
+    out = []
+    for e in raiz.iter():
+        if local(e.tag) != "entry":
+            continue
+        l = hijo(e, "link")
+        out.append({"tema": texto(e, "title"), "link": l.get("href", "") if l is not None else "", "valor": ""})
+    return out[:20]
+
+
+def x_github():
+    desde = (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d")
+    d = json.loads(bajar("https://api.github.com/search/repositories?q=" + urllib.parse.quote(f"created:>{desde}")
+                         + "&sort=stars&order=desc&per_page=20", intentos=1))
+    return [{"tema": x["full_name"] + (": " + x["description"][:90] if x.get("description") else ""),
+             "link": x["html_url"], "valor": str(x.get("stargazers_count", 0)) + " estrellas"}
+            for x in d.get("items", [])]
+
+
+EXTRAS = [  # (id, rotulo, titulo, descripcion, funcion)
+    ("youtube", "YouTube", "Videos en tendencia", "Lo más visto en Argentina", x_youtube),
+    ("trends_us", "Google", "Búsquedas en EE.UU.", "Lo que explota allá suele llegar acá después (en inglés)", x_trends_eeuu),
+    ("mastodon_links", "Mastodon", "Notas más compartidas", "Links que más circulan en la red abierta (global)", x_mastodon_links),
+    ("mastodon_tags", "Mastodon", "Hashtags en tendencia", "Global", x_mastodon_tags),
+    ("producthunt", "Product Hunt", "Productos nuevos", "Lanzamientos de herramientas y apps del día", x_producthunt),
+    ("github", "GitHub", "Proyectos que explotan", "Repos creados esta semana con más estrellas", x_github),
+    ("devto", "DEV", "Lo más leído por devs", "Artículos top de la comunidad de programadores", x_devto),
+    ("lobsters", "Lobsters", "Debate tech", "Comunidad técnica, parecida a Hacker News", x_lobsters),
+]
 
 
 # -------------------------------------------------------------------- agrupado
@@ -648,6 +726,18 @@ def correr():
         except Exception as e:  # noqa: BLE001
             log("  ERROR", nombre, e)
             salida["errores"].append(f"{nombre}: {str(e)[:200]}")
+
+    salida["extras"] = []
+    for eid, rotulo, titulo, desc, fn in EXTRAS:
+        try:
+            log("Bajando", rotulo, titulo)
+            items = fn()
+            if items:
+                salida["extras"].append({"id": eid, "rotulo": rotulo, "titulo": titulo, "desc": desc,
+                                         "items": [i for i in items if i.get("tema")][:20]})
+        except Exception as e:  # noqa: BLE001
+            log("  ERROR", rotulo, e)
+            salida["errores"].append(f"{rotulo} ({titulo}): {re.sub(r'key=[^& ]+', 'key=***', str(e))[:160]}")
 
     for t in salida["tendencias_ar"]:   # una busqueda que entro hace poco esta despegando
         try:
