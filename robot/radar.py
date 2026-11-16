@@ -275,6 +275,7 @@ def reddit():
                 out.append({"tema": x.get("title", ""), "sub": sub, "puntos": x.get("score") or 0,
                             "comentarios": x.get("num_comments") or 0,
                             "link": "https://www.reddit.com" + x.get("permalink", "")})
+            time.sleep(4)
             continue
         except Exception:  # noqa: BLE001
             pass
@@ -288,7 +289,7 @@ def reddit():
                             "link": l.get("href", "") if l is not None else ""})
         except Exception as e:  # noqa: BLE001
             fallas.append(f"r/{sub}: {e}")
-        time.sleep(1)
+        time.sleep(4)
     if not out and fallas:
         raise RuntimeError("; ".join(fallas)[:300])
     out.sort(key=lambda x: -x["puntos"])
@@ -651,7 +652,7 @@ def correr():
     for t in salida["tendencias_ar"]:   # una busqueda que entro hace poco esta despegando
         try:
             h = (ahora - datetime.fromisoformat(t["desde"])).total_seconds() / 3600
-            t["estado"] = "despegando" if h <= 3 else None
+            t["estado"] = "despegando" if h <= 1 else None
         except Exception:  # noqa: BLE001
             t["estado"] = None
 
