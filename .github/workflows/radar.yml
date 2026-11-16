@@ -22,6 +22,8 @@ jobs:
         with:
           python-version: "3.12"
       - name: Rastrear tendencias
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
         run: python robot/radar.py
       - name: Guardar resultados
         run: |
