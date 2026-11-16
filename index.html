@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Grow UP Radar</title>
+<style>
+:root{--bg:#f5f6f8;--card:#fff;--tx:#14171f;--mut:#667085;--line:#e4e7ec;--acc:#0b6bcb;--acc2:#e8f1fb;--hot:#d92d20;--ok:#067647}
+[data-tema=oscuro]{--bg:#0f1218;--card:#181c25;--tx:#eef0f4;--mut:#98a2b3;--line:#2a303c;--acc:#6ab0ff;--acc2:#1c2a3d;--hot:#ff7a6e;--ok:#5fd39a}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:15px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif}
+header{position:sticky;top:0;z-index:5;background:var(--card);border-bottom:1px solid var(--line);padding:12px 16px}
+.fila{display:flex;align-items:center;gap:10px;flex-wrap:wrap;max-width:980px;margin:0 auto}
+h1{font-size:19px;margin:0;letter-spacing:-.01em}
+h1 span{color:var(--acc)}
+.act{color:var(--mut);font-size:12.5px;margin-left:auto}
+button{font:inherit;cursor:pointer;border:1px solid var(--line);background:var(--card);color:var(--tx);border-radius:999px;padding:6px 13px}
+button:hover{border-color:var(--acc)}
+button.on{background:var(--acc);border-color:var(--acc);color:#fff}
+[data-tema=oscuro] button.on{color:#0f1218}
+.tabs{margin-top:10px;gap:6px}
+.per{margin-top:8px;gap:6px}
+.per button{font-size:13px;padding:4px 11px}
+main{max-width:980px;margin:0 auto;padding:16px}
+.cal{display:flex;gap:6px;flex-wrap:wrap;margin:0 0 14px}
+.chip{background:var(--acc2);color:var(--acc);border-radius:999px;padding:3px 10px;font-size:12.5px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px;margin-bottom:10px;display:grid;grid-template-columns:38px 1fr;gap:4px 12px}
+.n{font-size:20px;font-weight:700;color:var(--mut);text-align:center;padding-top:2px}
+.card h3{margin:0;font-size:16px;line-height:1.3}
+.meta{color:var(--mut);font-size:12.5px;margin-top:4px}
+.meta b{color:var(--hot)}
+.cuerpo{grid-column:2}
+details{margin-top:8px}
+summary{cursor:pointer;color:var(--acc);font-size:13px}
+ul{margin:8px 0 0;padding-left:18px}
+li{margin-bottom:5px;font-size:13.5px}
+a{color:var(--acc);text-decoration:none}
+a:hover{text-decoration:underline}
+.acc{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap}
+.acc button{font-size:12.5px;padding:4px 11px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px}
+.caja{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px 16px}
+.caja h2{font-size:15px;margin:0 0 2px}
+.caja p{margin:0 0 10px;color:var(--mut);font-size:12.5px}
+.it{display:flex;gap:10px;padding:7px 0;border-top:1px solid var(--line);align-items:baseline}
+.it .k{flex:1;min-width:0}
+.it .v{color:var(--mut);font-size:12.5px;white-space:nowrap}
+.it .cp{border:0;padding:0 4px;color:var(--mut);background:none}
+.vacio{color:var(--mut);padding:30px 0;text-align:center}
+.aviso{background:var(--acc2);border-radius:12px;padding:10px 14px;font-size:13px;margin-bottom:14px}
+#toast{position:fixed;bottom:18px;left:50%;transform:translateX(-50%);background:var(--tx);color:var(--bg);padding:8px 16px;border-radius:999px;font-size:13px;opacity:0;transition:opacity .2s;pointer-events:none}
+#toast.ver{opacity:1}
+</style>
+</head>
+<body>
+<header>
+  <div class="fila">
+    <h1>Grow UP <span>Radar</span></h1>
+    <span class="act" id="act">Cargando…</span>
+    <button id="btnTema" title="Cambiar tema claro/oscuro">◐</button>
+  </div>
+  <div class="fila tabs" id="tabs"></div>
+  <div class="fila per" id="per"></div>
+</header>
+<main id="main"><div class="vacio">Cargando el radar…</div></main>
+<div id="toast"></div>
+<script>
+const PERIODOS = {ahora:"Ahora (4 h)", "24h":"Últimas 24 h", semana:"Última semana", mes:"Último mes"};
+let D = null, tab = "ahora_ar", per = "24h";
+
+function guardar(k, v){ try{ localStorage.setItem(k, v); }catch(e){} }
+function leer(k){ try{ return localStorage.getItem(k); }catch(e){ return null; } }
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const url = u => /^https?:\/\//i.test(u || "") ? esc(u) : "#";
+const num = n => Number(n || 0).toLocaleString("es-AR");
+
+function hace(iso){
+  if(!iso) return "";
+  const m = Math.round((Date.now() - new Date(iso)) / 60000);
+  if(m < 1) return "recién";
+  if(m < 60) return "hace " + m + " min";
+  const h = Math.round(m / 60);
+  if(h < 48) return "hace " + h + " h";
+  return "hace " + Math.round(h / 24) + " días";
+}
+function toast(t){ const e = document.getElementById("toast"); e.textContent = t; e.classList.add("ver"); setTimeout(() => e.classList.remove("ver"), 1800); }
+async function copiar(t){
+  try{ await navigator.clipboard.writeText(t); }
+  catch(e){ const a = document.createElement("textarea"); a.value = t; document.body.appendChild(a); a.select(); document.execCommand("copy"); a.remove(); }
+  toast("Copiado. Pegalo en Claude");
+}
+function brief(tema, contexto, notas){
+  let t = "Quiero armar contenido para redes de Grow UP HR sobre este tema que está en tendencia:\n\n";
+  t += "TEMA: " + tema + "\n";
+  if(contexto) t += "CONTEXTO: " + contexto + "\n";
+  if(notas && notas.length){ t += "\nNOTAS DE REFERENCIA:\n"; notas.forEach(n => t += "- " + n.titulo + " (" + (n.medio || "") + ") " + (n.link || "") + "\n"); }
+  t += "\nRevisá las notas, decime si conviene subirnos al tema y con qué ángulo (mundo laboral / IT / RRHH), y proponeme: un reel, una placa y un post de LinkedIn.";
+  return t;
+}
+const briefs = [];
+function btnBrief(tema, contexto, notas){ briefs.push(brief(tema, contexto, notas)); return '<button data-b="' + (briefs.length - 1) + '">Copiar brief para Claude</button>'; }
+
+function pintarTabs(){
+  const tabs = [["ahora_ar", "🔥 En tendencia ahora"]].concat(Object.entries(D.categorias).map(([k, v]) => [k, v.nombre]));
+  document.getElementById("tabs").innerHTML = tabs.map(([k, n]) => '<button data-t="' + esc(k) + '" class="' + (k === tab ? "on" : "") + '">' + esc(n) + "</button>").join("");
+  document.getElementById("per").innerHTML = tab === "ahora_ar" ? "" :
+    Object.entries(PERIODOS).map(([k, n]) => '<button data-p="' + k + '" class="' + (k === per ? "on" : "") + '">' + n + "</button>").join("");
+}
+
+function vistaAhora(){
+  const g = D.tendencias_ar || [], w = (D.wikipedia || {}).temas || [], h = D.hacker_news || [];
+  let s = '<div class="aviso">Lo que la gente está buscando y leyendo en este momento. Para audios y hashtags de TikTok: <a href="https://ads.tiktok.com/business/creativecenter/inspiration/popular/hashtag/pc/es" target="_blank" rel="noopener">TikTok Creative Center ↗</a></div><div class="cols">';
+  s += '<div class="caja"><h2>Google · búsquedas en Argentina</h2><p>Lo más buscado ahora</p>' + (g.length ? g.slice(0, 25).map(t =>
+    '<div class="it"><div class="k"><a href="https://www.google.com/search?q=' + encodeURIComponent(t.tema) + '" target="_blank" rel="noopener">' + esc(t.tema) + "</a>" +
+    (t.notas && t.notas[0] ? '<div class="meta"><a href="' + url(t.notas[0].link) + '" target="_blank" rel="noopener">' + esc(t.notas[0].titulo) + "</a></div>" : "") +
+    '</div><span class="v">' + esc(t.busquedas) + " · " + hace(t.desde) + "</span>" + btnBrief(t.tema, "Búsqueda en tendencia en Google Argentina (" + t.busquedas + " búsquedas)", t.notas).replace("<button", '<button class="cp" title="Copiar brief"').replace("Copiar brief para Claude", "⧉") + "</div>").join("") : '<div class="vacio">Sin datos</div>') + "</div>";
+  s += '<div class="caja"><h2>Wikipedia · lo más leído en Argentina</h2><p>' + (D.wikipedia && D.wikipedia.fecha ? "Día " + esc(D.wikipedia.fecha) : "") + "</p>" + (w.length ? w.slice(0, 25).map(t =>
+    '<div class="it"><div class="k"><a href="' + url(t.link) + '" target="_blank" rel="noopener">' + esc(t.tema) + '</a></div><span class="v">' + num(t.vistas) + " vistas</span></div>").join("") : '<div class="vacio">Sin datos</div>') + "</div>";
+  s += '<div class="caja"><h2>Hacker News · mundo tech</h2><p>Lo que se discute antes de llegar a los diarios (en inglés)</p>' + (h.length ? h.slice(0, 20).map(t =>
+    '<div class="it"><div class="k"><a href="' + url(t.link) + '" target="_blank" rel="noopener">' + esc(t.tema) + '</a></div><span class="v"><a href="' + url(t.debate) + '" target="_blank" rel="noopener">' + num(t.puntos) + " pts</a></span></div>").join("") : '<div class="vacio">Sin datos</div>') + "</div>";
+  return s + "</div>";
+}
+
+function vistaCategoria(){
+  const b = D.categorias[tab].periodos[per] || {temas: []};
+  let s = "";
+  if(b.calientes && b.calientes.length) s += '<div class="cal">' + b.calientes.map(c => '<span class="chip">' + esc(c.palabra) + " · " + c.medios + "</span>").join("") + "</div>";
+  if(!b.temas.length) return s + '<div class="vacio">No hay notas para este tema en este período.</div>';
+  s += b.temas.map((t, i) =>
+    '<div class="card"><div class="n">' + (i + 1) + '</div><div><h3>' + esc(t.titulo) + '</h3><div class="meta">' +
+    (t.medios > 1 ? "<b>" + t.medios + " medios</b>" : "1 medio") + " · " + t.notas_total + (t.notas_total === 1 ? " nota" : " notas") + " · última " + hace(t.ultima) +
+    (t.primera && t.primera !== t.ultima ? " · arrancó " + hace(t.primera) : "") + '</div></div><div class="cuerpo"><div class="meta">' + esc((t.lista_medios || []).join(" · ")) + "</div>" +
+    "<details><summary>Ver notas</summary><ul>" + t.notas.map(n => '<li><a href="' + url(n.link) + '" target="_blank" rel="noopener">' + esc(n.titulo) + "</a> — " + esc(n.medio) + "</li>").join("") + "</ul></details>" +
+    '<div class="acc">' + btnBrief(t.titulo, t.medios + " medios hablando del tema (" + D.categorias[tab].nombre + ", " + PERIODOS[per].toLowerCase() + ")", t.notas) + "</div></div></div>").join("");
+  return s;
+}
+
+function pintar(){
+  briefs.length = 0;
+  pintarTabs();
+  document.getElementById("main").innerHTML = tab === "ahora_ar" ? vistaAhora() : vistaCategoria();
+  document.getElementById("act").textContent = "Actualizado " + hace(D.generado) + " · " + num(D.notas_leidas) + " notas leídas";
+}
+
+document.addEventListener("click", e => {
+  const b = e.target.closest("button"); if(!b) return;
+  if(b.dataset.t){ tab = b.dataset.t; guardar("radar_tab", tab); pintar(); window.scrollTo(0, 0); }
+  else if(b.dataset.p){ per = b.dataset.p; guardar("radar_per", per); pintar(); }
+  else if(b.dataset.b !== undefined){ copiar(briefs[+b.dataset.b]); }
+  else if(b.id === "btnTema"){ const t = document.documentElement.dataset.tema === "oscuro" ? "claro" : "oscuro"; document.documentElement.dataset.tema = t; guardar("radar_tema", t); }
+});
+
+async function cargar(){
+  try{
+    const r = await fetch("data/latest.json?t=" + Date.now(), {cache: "no-store"});
+    if(!r.ok) throw new Error(r.status);
+    D = await r.json();
+    if(tab !== "ahora_ar" && !D.categorias[tab]) tab = "ahora_ar";
+    pintar();
+  }catch(e){
+    if(!D) document.getElementById("main").innerHTML = '<div class="vacio">Todavía no hay datos. El robot los genera en su primera corrida.</div>';
+    document.getElementById("act").textContent = "Sin datos";
+  }
+}
+document.documentElement.dataset.tema = leer("radar_tema") || (matchMedia("(prefers-color-scheme: dark)").matches ? "oscuro" : "claro");
+tab = leer("radar_tab") || tab; per = PERIODOS[leer("radar_per")] ? leer("radar_per") : per;
+cargar(); setInterval(cargar, 10 * 60 * 1000);
+</script>
+</body>
+</html>
